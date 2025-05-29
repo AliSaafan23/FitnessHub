@@ -7,15 +7,10 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, unique: true, sparse: true },
   password: { type: String, required: true },
   role: { type: String, enum: ["trainee", "trainer", "gym_owner", "admin"], required: true },
-  profilePic: { type: String }, // For profile image
-  media: [
-    {
-      url: { type: String, required: true }, // URL of the file (image or video)
-      type: { type: String, enum: ["image", "video"], required: true }, // Media type
-      uploadedAt: { type: Date, default: Date.now },
-    },
-  ], // Array to store multiple images/videos
+  profilePic: { type: String },
   fitnessGoal: { type: String, enum: ["weight_loss", "muscle_gain", "general_fitness"] },
+  favoriteVideos: [{ type: mongoose.Schema.Types.ObjectId, ref: "Video" }],
+  trainer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   createdAt: { type: Date, default: Date.now },
 });
 

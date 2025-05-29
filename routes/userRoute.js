@@ -1,15 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const userController = require("../controllers/userController");
+const videoController = require("../controllers/videoController");
 const verifyToken = require("../middlewares/verifyToken");
-const { uploadProfilePic, uploadMedia, uploadMultiple } = require("../middlewares/upload");
+const { uploadProfilePic, uploadMedia } = require("../middlewares/upload");
 
 router.get("/profile", verifyToken, userController.getProfile);
 router.put("/profile", verifyToken, userController.updateProfile);
-
-// رفع صورة بروفايل
 router.post("/upload-pic", verifyToken, uploadProfilePic, userController.uploadProfilePic);
+router.post("/upload-video", verifyToken, uploadMedia, videoController.uploadVideo);
+router.get("/videos/:userId", videoController.getUserVideos);
 
-// رفع فيديو أو صورة ميديا واحدة
-router.post("/upload-media", verifyToken, uploadMedia, userController.uploadMedia);
 module.exports = router;
