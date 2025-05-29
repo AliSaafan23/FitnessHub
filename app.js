@@ -5,6 +5,7 @@ const db = require("./config/db");
 const authRoute = require("./routes/authRoute");
 const userRoute = require("./routes/userRoute");
 const planRoute = require("./routes/planRoute");
+const advertisementRoute = require("./routes/advertisementRoute");
 const app = express();
 app.use(express.json());
 
@@ -12,6 +13,7 @@ app.use(express.json());
 app.use("/api/auth", authRoute);
 app.use("/api/user", userRoute);
 app.use("/api/plan", planRoute);
+app.use("/api/advertisements", advertisementRoute);
 // Global error handling
 app.use((err, req, res, next) => {
   console.error("Error Stack:", err.stack);
