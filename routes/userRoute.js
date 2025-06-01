@@ -10,5 +10,8 @@ router.put("/profile", verifyToken, userController.updateProfile);
 router.post("/upload-pic", verifyToken, uploadProfilePic, userController.uploadProfilePic);
 router.post("/upload-video", verifyToken, uploadMedia, videoController.uploadVideo);
 router.get("/videos/:userId", videoController.getUserVideos);
+router.get("/scan/:barcodeId", verifyToken, userController.scanBarcode);
+router.post("/attendance/:barcodeId", verifyToken, userController.recordAttendance);
+router.get("/attendance/history/:userId", verifyToken, userController.getAttendanceHistory);
 
 module.exports = router;

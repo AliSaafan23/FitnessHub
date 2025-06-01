@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const bwipjs = require("bwip-js");
+const { google } = require("googleapis");
+const { Readable } = require("stream");
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -12,13 +15,32 @@ const userSchema = new mongoose.Schema({
   favoriteVideos: [{ type: mongoose.Schema.Types.ObjectId, ref: "Video" }],
   trainer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   createdAt: { type: Date, default: Date.now },
+  barcodeId: {
+    type: String,
+    unique: true,
+  },
+  barcodeUrl: {
+    type: String,
+  },
 });
 
+// Generate barcode before saving
 userSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
-    this.password = await bcrypt.hash(this.password, 10);
+  try {
+    if (this.isModified("password")) {
+      this.password = await bcrypt.hash(this.password, 10);
+    }
+
+    // Generate barcodeId if not exists
+    if (!this.barcodeId) {
+      const timestamp = Date.now().toString();
+      const random = Math.floor(1000 + Math.random() * 9000).toString();
+      this.barcodeId = `FH${timestamp.slice(-6)}${random}`;
+    }
+    next();
+  } catch (error) {
+    next(error);
   }
-  next();
 });
 
 module.exports = mongoose.model("User", userSchema);

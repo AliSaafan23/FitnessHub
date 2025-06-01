@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const { google } = require("googleapis");
 const fs = require("fs");
 const path = require("path");
+const Attendance = require("../models/Attendance");
 
 exports.getProfile = async (req, res) => {
   try {
@@ -159,5 +160,160 @@ exports.getFavoriteVideos = async (req, res) => {
     res.status(200).json(user.favoriteVideos);
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Scan barcode and get user info
+exports.scanBarcode = async (req, res) => {
+  try {
+    const { barcodeId } = req.params;
+
+    if (!["admin", "trainer", "gym_owner"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to scan barcodes",
+      });
+    }
+
+    const user = await User.findOne({ barcodeId }).select("-password").populate("trainer", "name email");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid barcode",
+      });
+    }
+
+    // Get today's attendance
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const attendance = await Attendance.find({
+      userId: user._id,
+      date: {
+        $gte: today,
+        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        fitnessGoal: user.fitnessGoal,
+        trainer: user.trainer,
+        todayAttendance: attendance,
+      },
+    });
+  } catch (error) {
+    console.error("Scan Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error scanning barcode",
+      error: error.message,
+    });
+  }
+};
+
+// Update recordAttendance method
+exports.recordAttendance = async (req, res) => {
+  try {
+    const { barcodeId } = req.params;
+
+    if (!["admin", "trainer", "gym_owner"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to record attendance",
+      });
+    }
+
+    const user = await User.findOne({ barcodeId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid barcode",
+      });
+    }
+
+    // Check for existing attendance today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const existingAttendance = await Attendance.findOne({
+      userId: user._id,
+      date: {
+        $gte: today,
+        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    if (existingAttendance) {
+      return res.status(400).json({
+        success: false,
+        message: "User already checked in today",
+      });
+    }
+
+    // Record new attendance
+    const attendance = new Attendance({
+      userId: user._id,
+      date: new Date(),
+      checkInTime: new Date(),
+      checkedBy: req.user.id,
+      status: "present",
+    });
+
+    await attendance.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Attendance recorded successfully",
+      data: {
+        userId: user._id,
+        name: user.name,
+        checkInTime: attendance.checkInTime,
+        checkedBy: req.user.name,
+        status: attendance.status,
+      },
+    });
+  } catch (error) {
+    console.error("Attendance Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error recording attendance",
+      error: error.message,
+    });
+  }
+};
+
+// Add new method to get user attendance history
+exports.getAttendanceHistory = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const query = { userId };
+    if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    const attendance = await Attendance.find(query).populate("checkedBy", "name").sort({ date: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: attendance,
+    });
+  } catch (error) {
+    console.error("Get Attendance Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving attendance history",
+      error: error.message,
+    });
   }
 };
