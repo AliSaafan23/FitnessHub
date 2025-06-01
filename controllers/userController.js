@@ -39,47 +39,69 @@ exports.updateProfile = async (req, res) => {
 
 exports.uploadProfilePic = async (req, res) => {
   try {
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
-    const mimeType = req.file.mimetype;
+    console.log("Starting upload process...");
+    console.log("User ID:", req.user.id);
+    console.log("File:", req.file);
 
-    const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_DRIVE_KEY_PATH,
-      scopes: ["https://www.googleapis.com/auth/drive"],
+    // 1. Verify the user exists
+    const userExists = await User.findById(req.user.id);
+    console.log("User found:", userExists);
+
+    if (!userExists) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found - Invalid user ID",
+      });
+    }
+
+    // 2. Validate file
+    if (!req.file || !req.file.googleDriveUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded or upload failed",
+      });
+    }
+
+    // 3. Update user with new profile picture
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { profilePic: req.file.googleDriveUrl },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("-password");
+
+    // 4. Verify update success
+    if (!updatedUser) {
+      console.error("Update failed for user:", req.user.id);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update user profile picture",
+      });
+    }
+
+    // 5. Return success response
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture uploaded successfully",
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        profilePic: updatedUser.profilePic,
+        role: updatedUser.role,
+      },
     });
-
-    const drive = google.drive({ version: "v3", auth });
-
-    const fileMetadata = {
-      name: fileName,
-      parents: [process.env.GOOGLE_DRIVE_FOLDER_ID], // Folder ID
-    };
-
-    const media = {
-      mimeType: mimeType,
-      body: fs.createReadStream(filePath),
-    };
-
-    const { data } = await drive.files.create({
-      resource: fileMetadata,
-      media: media,
-      fields: "id, webViewLink",
-    });
-
-    // حذف الملف المؤقت
-    fs.unlinkSync(filePath);
-
-    const user = await User.findByIdAndUpdate(req.user.id, { profilePic: data.webViewLink }, { new: true }).select(
-      "-password"
-    );
-
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Upload Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error uploading profile picture",
+      error: error.message,
+    });
   }
 };
-
 // Add a video to user's favorites
 exports.addFavoriteVideo = async (req, res) => {
   try {

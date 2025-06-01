@@ -1,6 +1,7 @@
 const Subscription = require("../models/Subscription");
 const Plan = require("../models/Plan");
 const User = require("../models/User");
+const mongoose = require("mongoose");
 
 exports.createSubscription = async (req, res) => {
   try {
@@ -11,11 +12,13 @@ exports.createSubscription = async (req, res) => {
         message: "Only trainees can create subscriptions",
       });
     }
+
     const { planId } = req.params;
     const { paymentMethod } = req.body;
 
-    // Verify plan exists
+    // Verify plan exists and check capacity
     const plan = await Plan.findById(planId).populate("trainer");
+
     if (!plan) {
       return res.status(404).json({
         success: false,
@@ -23,37 +26,77 @@ exports.createSubscription = async (req, res) => {
       });
     }
 
-    // Calculate dates
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + parseInt(plan.duration));
+    // Check if plan is full
+    if (plan.currentParticipants >= plan.maxParticipants) {
+      return res.status(400).json({
+        success: false,
+        message: "Plan is already full",
+      });
+    }
 
-    // Create subscription
-    const subscription = new Subscription({
+    // Check if plan has started
+    if (new Date() > plan.endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Plan has already ended",
+      });
+    }
+
+    // Check if trainee is already subscribed to this plan
+    const existingSubscription = await Subscription.findOne({
       trainee: req.user.id,
-      trainer: plan.trainer._id,
       plan: planId,
-      startDate,
-      endDate,
-      payment: {
-        amount: plan.price,
-        paymentMethod,
-        paymentStatus: "pending", // Will be updated after payment processing
-      },
+      status: { $in: ["active", "pending"] },
     });
 
-    await subscription.save();
+    if (existingSubscription) {
+      return res.status(400).json({
+        success: false,
+        message: "You are already subscribed to this plan",
+      });
+    }
 
-    // Here you would integrate with your payment gateway
-    // For example: Stripe, PayPal, etc.
-    // await processPayment(subscription);
+    // Start a session for transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    res.status(201).json({
-      success: true,
-      message: "Subscription created successfully",
-      data: subscription,
-    });
+    try {
+      // Create subscription
+      const subscription = new Subscription({
+        trainee: req.user.id,
+        trainer: plan.trainer._id,
+        plan: planId,
+        startDate: new Date(),
+        endDate: plan.endDate,
+        payment: {
+          amount: plan.price,
+          paymentMethod,
+          paymentStatus: "pending",
+        },
+      });
+
+      await subscription.save({ session });
+
+      // Increment currentParticipants in plan
+      await Plan.findByIdAndUpdate(planId, { $inc: { currentParticipants: 1 } }, { session, new: true });
+
+      // Commit the transaction
+      await session.commitTransaction();
+
+      res.status(201).json({
+        success: true,
+        message: "Subscription created successfully",
+        data: subscription,
+      });
+    } catch (error) {
+      // If anything fails, abort the transaction
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   } catch (error) {
+    console.error("Create Subscription Error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -87,27 +130,52 @@ exports.cancelSubscription = async (req, res) => {
   try {
     const { subscriptionId } = req.params;
 
-    const subscription = await Subscription.findOne({
-      _id: subscriptionId,
-      trainee: req.user.id,
-    });
+    // Start a session for transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    if (!subscription) {
-      return res.status(404).json({
-        success: false,
-        message: "Subscription not found",
+    try {
+      const subscription = await Subscription.findOne({
+        _id: subscriptionId,
+        trainee: req.user.id,
+        status: { $in: ["active", "pending"] },
+      }).populate("plan");
+
+      if (!subscription) {
+        return res.status(404).json({
+          success: false,
+          message: "Active subscription not found",
+        });
+      }
+
+      // Update subscription status
+      subscription.status = "cancelled";
+      subscription.autoRenew = false;
+      await subscription.save({ session });
+
+      // Decrease currentParticipants in plan
+      await Plan.findByIdAndUpdate(
+        subscription.plan._id,
+        { $inc: { currentParticipants: -1 } },
+        { session, new: true }
+      );
+
+      // Commit the transaction
+      await session.commitTransaction();
+
+      res.status(200).json({
+        success: true,
+        message: "Subscription cancelled successfully",
       });
+    } catch (error) {
+      // If anything fails, abort the transaction
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    subscription.status = "cancelled";
-    subscription.autoRenew = false;
-    await subscription.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Subscription cancelled successfully",
-    });
   } catch (error) {
+    console.error("Cancel Subscription Error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",

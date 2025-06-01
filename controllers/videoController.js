@@ -64,3 +64,4 @@ exports.getUserVideos = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+// If an error occurs, return a 500 error
