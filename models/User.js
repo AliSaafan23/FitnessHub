@@ -18,24 +18,27 @@ const userSchema = new mongoose.Schema({
   barcodeId: {
     type: String,
     unique: true,
+    sparse: true, // Allow null for non-trainee/trainer users
   },
   barcodeUrl: {
     type: String,
+    sparse: true, // Allow null for non-trainee/trainer users
   },
 });
 
-// Generate barcode before saving
+// Update pre-save middleware to handle barcode generation
 userSchema.pre("save", async function (next) {
   try {
     if (this.isModified("password")) {
       this.password = await bcrypt.hash(this.password, 10);
     }
 
-    // Generate barcodeId if not exists
-    if (!this.barcodeId) {
+    // Generate barcodeId only for trainee and trainer roles
+    if ((this.role === "trainee" || this.role === "trainer") && !this.barcodeId) {
+      const prefix = this.role === "trainee" ? "FHT" : "FHR"; // Different prefix for trainee/trainer
       const timestamp = Date.now().toString();
       const random = Math.floor(1000 + Math.random() * 9000).toString();
-      this.barcodeId = `FH${timestamp.slice(-6)}${random}`;
+      this.barcodeId = `${prefix}${timestamp.slice(-6)}${random}`;
     }
     next();
   } catch (error) {
