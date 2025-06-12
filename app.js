@@ -8,6 +8,11 @@ const planRoute = require("./routes/planRoute");
 const advertisementRoute = require("./routes/advertisementRoute");
 const reviewRoute = require("./routes/reviewRoute");
 const subscriptionRoute = require("./routes/subscriptionRoute");
+const notificationRoute = require("./routes/notificationRoute");
+const notificationService = require("./services/notificationService");
+const subscriptionNotificationsRoute = require("./routes/subscriptionNotificationRoute");
+const subscriptionNotificationService = require("./services/subscriptionNotificationService");
+
 const app = express();
 app.use(express.json());
 
@@ -18,6 +23,8 @@ app.use("/api/plan", planRoute);
 app.use("/api/advertisements", advertisementRoute);
 app.use("/api/reviews", reviewRoute);
 app.use("/api/subscriptions", subscriptionRoute);
+app.use("/api/notifications", notificationRoute);
+app.use("/api/subscription-notifications", subscriptionNotificationsRoute);
 // Global error handling
 app.use((err, req, res, next) => {
   console.error("Error Stack:", err.stack);
@@ -48,6 +55,12 @@ app.use((err, req, res, next) => {
     error: err.message,
   });
 });
+
+// Schedule subscription expiration checks
+setInterval(async () => {
+  await subscriptionNotificationService.checkExpiringSubscriptions();
+  await subscriptionNotificationService.checkExpiredSubscriptions();
+}, 60 * 1000); // Run every minute for testing
 
 // Connect to MongoDB and start server
 const startServer = async () => {

@@ -2,6 +2,7 @@ const Subscription = require("../models/Subscription");
 const Plan = require("../models/Plan");
 const User = require("../models/User");
 const mongoose = require("mongoose");
+const subscriptionNotificationService = require("../services/subscriptionNotificationService");
 
 exports.createSubscription = async (req, res) => {
   try {
@@ -14,7 +15,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     const { planId } = req.params;
-    const { paymentMethod } = req.body;
+    const { paymentMethod, startDate, endDate } = req.body;
 
     // Verify plan exists and check capacity
     const plan = await Plan.findById(planId).populate("trainer");
@@ -23,6 +24,35 @@ exports.createSubscription = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Plan not found",
+      });
+    }
+
+    // Validate startDate and endDate
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
+
+    if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid start or end date",
+      });
+    }
+
+    if (parsedEndDate <= parsedStartDate) {
+      return res.status(400).json({
+        success: false,
+        message: "End date must be after start date",
+      });
+    }
+
+    // Calculate subscription duration in days
+    const durationInDays = Math.ceil((parsedEndDate - parsedStartDate) / (1000 * 60 * 60 * 24));
+
+    // Check if subscription duration is at least 30 days
+    if (durationInDays < 30) {
+      return res.status(400).json({
+        success: false,
+        message: "Subscription must be for at least one month",
       });
     }
 
@@ -35,10 +65,10 @@ exports.createSubscription = async (req, res) => {
     }
 
     // Check if plan has started
-    if (new Date() > plan.endDate) {
+    if (parsedStartDate > plan.endDate) {
       return res.status(400).json({
         success: false,
-        message: "Plan has already ended",
+        message: "Start date cannot be after plan end date",
       });
     }
 
@@ -66,8 +96,8 @@ exports.createSubscription = async (req, res) => {
         trainee: req.user.id,
         trainer: plan.trainer._id,
         plan: planId,
-        startDate: new Date(),
-        endDate: plan.endDate,
+        startDate: parsedStartDate,
+        endDate: parsedEndDate,
         payment: {
           amount: plan.price,
           paymentMethod,
@@ -79,6 +109,13 @@ exports.createSubscription = async (req, res) => {
 
       // Increment currentParticipants in plan
       await Plan.findByIdAndUpdate(planId, { $inc: { currentParticipants: 1 } }, { session, new: true });
+
+      // Send subscription confirmation notification
+      await subscriptionNotificationService.sendSubscriptionNotification(
+        req.user.id,
+        "subscription_created",
+        subscription
+      );
 
       // Commit the transaction
       await session.commitTransaction();

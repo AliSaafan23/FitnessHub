@@ -62,6 +62,13 @@ const subscriptionSchema = new mongoose.Schema({
       message: String,
     },
   ],
+  notificationPreferences: {
+    type: {
+      subscriptionStart: { type: Boolean, default: true },
+      subscriptionEnd: { type: Boolean, default: true },
+    },
+    default: { subscriptionStart: true, subscriptionEnd: true },
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -72,5 +79,21 @@ const subscriptionSchema = new mongoose.Schema({
 subscriptionSchema.index({ trainee: 1, status: 1 });
 subscriptionSchema.index({ trainer: 1, status: 1 });
 subscriptionSchema.index({ endDate: 1, status: 1 }); // For expiration checks
+
+// Add a method to check if subscription is near expiration
+subscriptionSchema.methods.isNearExpiration = function () {
+  const now = new Date();
+  const oneMinuteFromNow = new Date(now.getTime() + 1 * 60 * 1000); // 1 minute for testing
+  return this.endDate <= oneMinuteFromNow && this.endDate > now;
+};
+
+subscriptionSchema.methods.hasExpired = function () {
+  const now = new Date();
+  console.log("endDate:", this.endDate);
+  console.log("now:", now);
+  const expired = this.endDate <= now;
+  console.log("hasExpired:", expired);
+  return expired;
+};
 
 module.exports = mongoose.model("Subscription", subscriptionSchema);

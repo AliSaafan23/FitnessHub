@@ -1,5 +1,7 @@
 const Advertisement = require("../models/Advertisement");
 const User = require("../models/User");
+const notificationService = require("../services/notificationService");
+
 exports.createAd = async (req, res) => {
   try {
     // Check if user is authorized (gym_owner or admin)
@@ -35,6 +37,15 @@ exports.createAd = async (req, res) => {
     });
 
     await newAd.save();
+
+    // Create notification for all users
+    await notificationService.createNotification(
+      "advertisement",
+      "New Advertisement",
+      `New advertisement: ${newAd.title}`,
+      newAd._id
+    );
+
     res.status(201).json(newAd);
   } catch (error) {
     console.error("Create Ad Error:", error);
