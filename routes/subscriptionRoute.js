@@ -7,5 +7,6 @@ router.post("/:planId", verifyToken, subscriptionController.createSubscription);
 router.get("/", verifyToken, subscriptionController.getSubscriptions);
 router.put("/:subscriptionId/cancel", verifyToken, subscriptionController.cancelSubscription);
 router.put("/:subscriptionId/auto-renew", verifyToken, subscriptionController.updateAutoRenewal);
+router.put("/:subscriptionId/renew", verifyToken, subscriptionController.renewSubscription); // Add this line
 
 module.exports = router;

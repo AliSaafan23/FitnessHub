@@ -43,38 +43,6 @@ exports.sendSubscriptionNotification = async (userId, type, subscription) => {
   }
 };
 
-exports.checkExpiringSubscriptions = async () => {
-  try {
-    const subscriptions = await Subscription.find({
-      status: "active",
-    }).populate("plan trainee");
-
-    for (const subscription of subscriptions) {
-      if (subscription.isNearExpiration()) {
-        // Check if expiration notification has already been sent
-        const expirationNotificationSent = subscription.notificationsSent.some(
-          (notification) => notification.type === "expiration"
-        );
-
-        if (!expirationNotificationSent) {
-          await this.sendSubscriptionNotification(subscription.trainee._id, "subscription_expiring", subscription);
-
-          // Update notificationsSent array
-          subscription.notificationsSent.push({
-            type: "expiration",
-            sentAt: new Date(),
-            message: "Expiration notification sent",
-          });
-
-          await subscription.save();
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Check Expiring Subscriptions Error:", error);
-  }
-};
-
 exports.checkExpiredSubscriptions = async () => {
   try {
     const subscriptions = await Subscription.find({

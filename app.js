@@ -58,7 +58,6 @@ app.use((err, req, res, next) => {
 
 // Schedule subscription expiration checks
 setInterval(async () => {
-  await subscriptionNotificationService.checkExpiringSubscriptions();
   await subscriptionNotificationService.checkExpiredSubscriptions();
 }, 60 * 1000); // Run every minute for testing
 

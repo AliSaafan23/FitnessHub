@@ -89,11 +89,24 @@ subscriptionSchema.methods.isNearExpiration = function () {
 
 subscriptionSchema.methods.hasExpired = function () {
   const now = new Date();
+
+  // نحسب تاريخ بكرا بنفس توقيت اليوم
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+
+  // نطبع عشان نتاكد
   console.log("endDate:", this.endDate);
-  console.log("now:", now);
-  const expired = this.endDate <= now;
-  console.log("hasExpired:", expired);
-  return expired;
+  console.log("tomorrow:", tomorrow);
+
+  // نحول endDate لبداية اليوم عشان نقارن بالتاريخ فقط بدون الوقت
+  const endDate = new Date(this.endDate);
+  const isTomorrow =
+    endDate.getFullYear() === tomorrow.getFullYear() &&
+    endDate.getMonth() === tomorrow.getMonth() &&
+    endDate.getDate() === tomorrow.getDate();
+
+  console.log("willExpireTomorrow:", isTomorrow);
+  return isTomorrow;
 };
 
 module.exports = mongoose.model("Subscription", subscriptionSchema);

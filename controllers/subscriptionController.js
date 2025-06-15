@@ -264,3 +264,52 @@ exports.updateAutoRenewal = async (req, res) => {
     });
   }
 };
+
+exports.renewSubscription = async (req, res) => {
+  try {
+    const { subscriptionId } = req.params;
+
+    // Find the subscription
+    const subscription = await Subscription.findById(subscriptionId);
+
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription not found",
+      });
+    }
+
+    // Check if the subscription is expired
+    if (subscription.status !== "expired") {
+      return res.status(400).json({
+        success: false,
+        message: "Subscription is not expired",
+      });
+    }
+
+    // Renew the subscription
+    subscription.status = "active";
+    subscription.startDate = new Date();
+    subscription.endDate = new Date(new Date().setDate(new Date().getDate() + 30)); // Renew for 30 days
+
+    // Clear the expiration notification
+    subscription.notificationsSent = subscription.notificationsSent.filter(
+      (notification) => notification.type !== "expiration"
+    );
+
+    await subscription.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Subscription renewed successfully",
+      data: subscription,
+    });
+  } catch (error) {
+    console.error("Renew Subscription Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
