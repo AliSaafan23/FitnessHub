@@ -1,4 +1,5 @@
 const Plan = require("../models/Plan");
+const Subscription = require("../models/Subscription");
 
 exports.createPlan = async (req, res) => {
   try {
@@ -138,5 +139,97 @@ exports.deletePlan = async (req, res) => {
     res.status(200).json({ message: "Plan deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+exports.getCurrentTraineesInPlans = async (req, res) => {
+  try {
+    // Verify user is a trainer
+    if (req.user.role !== "trainer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only trainers can access this information",
+      });
+    }
+
+    const now = new Date();
+
+    // Find all active subscriptions where the logged-in user is the trainer
+    const activeSubscriptions = await Subscription.find({
+      trainer: req.user.id,
+      status: "active",
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    })
+      .populate({
+        path: "trainee",
+        select: "name email profilePic",
+      })
+      .populate({
+        path: "plan",
+        select: "title description startDate endDate price",
+      });
+
+    console.log("Found subscriptions:", activeSubscriptions);
+
+    if (!activeSubscriptions.length) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          totalActivePlans: 0,
+          totalActiveTrainees: 0,
+          plans: [],
+        },
+      });
+    }
+
+    // Group subscriptions by plan
+    const planGroups = activeSubscriptions.reduce((groups, sub) => {
+      const planId = sub.plan._id.toString();
+
+      if (!groups[planId]) {
+        groups[planId] = {
+          plan: {
+            id: sub.plan._id,
+            title: sub.plan.title,
+            description: sub.plan.description,
+            startDate: sub.plan.startDate,
+            endDate: sub.plan.endDate,
+            price: sub.plan.price,
+          },
+          trainees: [],
+        };
+      }
+
+      groups[planId].trainees.push({
+        id: sub.trainee._id,
+        name: sub.trainee.name,
+        email: sub.trainee.email,
+        profilePic: sub.trainee.profilePic,
+        subscriptionStart: sub.startDate,
+        subscriptionEnd: sub.endDate,
+        status: sub.status,
+      });
+
+      return groups;
+    }, {});
+
+    const response = {
+      success: true,
+      data: {
+        totalActivePlans: Object.keys(planGroups).length,
+        totalActiveTrainees: activeSubscriptions.length,
+        plans: Object.values(planGroups),
+      },
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Get Current Trainees Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
