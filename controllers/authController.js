@@ -4,6 +4,9 @@ const User = require("../models/User");
 const bwipjs = require("bwip-js");
 const { google } = require("googleapis");
 const { Readable } = require("stream");
+const Otp = require("../models/otpModel");
+const nodemailer = require("nodemailer");
+const twilio = require("twilio");
 
 exports.register = async (req, res) => {
   try {
@@ -128,5 +131,79 @@ exports.login = async (req, res) => {
     res.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role }, token });
   } catch (error) {
     res.status(500).json({ message: "Server error", error });
+  }
+};
+
+// Configure nodemailer (use your email credentials)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER, // Add to .env
+    pass: process.env.EMAIL_PASS, // Add to .env
+  },
+});
+
+// Configure Twilio (add to .env)
+const twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+
+exports.requestOtp = async (req, res) => {
+  try {
+    const { emailOrPhone } = req.body;
+    const user = await User.findOne({
+      $or: [{ email: emailOrPhone }, { phone: emailOrPhone }],
+    });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await Otp.findOneAndUpdate(
+      { identifier: emailOrPhone },
+      { otp, expiresAt },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    if (user.email === emailOrPhone) {
+      // Send OTP via email
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: "Your OTP Code",
+        text: `Your OTP code is: ${otp}`,
+      });
+    } else if (user.phone === emailOrPhone) {
+      // Send OTP via SMS
+      await twilioClient.messages.create({
+        body: `Your OTP code is: ${otp}`,
+        from: process.env.TWILIO_PHONE_NUMBER, // Add to .env
+        to: user.phone,
+      });
+    }
+
+    res.json({ message: "OTP sent" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { emailOrPhone, otp } = req.body;
+    const record = await Otp.findOne({ identifier: emailOrPhone, otp });
+    if (!record || record.expiresAt < new Date()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    const user = await User.findOne({
+      $or: [{ email: emailOrPhone }, { phone: emailOrPhone }],
+    });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    await Otp.deleteOne({ _id: record._id });
+
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+    res.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role }, token });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
